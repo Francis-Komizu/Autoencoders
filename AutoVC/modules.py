@@ -12,7 +12,7 @@ class LinearNorm(nn.Module):
         self.linear_layer = nn.Linear(in_dim, out_dim, bias=bias)
 
         # initialize weight
-        nn.init.xavier_uniform(
+        nn.init.xavier_uniform_(
             self.linear_layer.weight,
             gain=nn.init.calculate_gain(w_init_gain)
         )
@@ -35,7 +35,7 @@ class ConvNorm(nn.Module):
                               bias=bias)
 
         # initialize weight
-        nn.init.xavier_uniform(
+        nn.init.xavier_uniform_(
             self.conv.weight,
             gain=nn.init.calculate_gain(w_gain_init)
         )

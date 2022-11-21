@@ -33,16 +33,17 @@ class ContentEncoder(nn.Module):
 
     def forward(self, x, spk_emb):
         # concatenate 80-dim mel-spectrogram and 256-dim speaker embedding
-        spk_emb = spk_emb.unsqueeze(-1).expand(-1, -1, x.size(-1))  # expand speaker embedding to match sequence length
-
+        # input spk_emb: 2-dim LongTensor [1, n], where n is he speaker id
+        # input mel: [B,  , N]
+        spk_emb = spk_emb.unsqueeze(-1).expand(x.size(0), -1, x.size(-1))  # expand spk_emb
+        x = torch.cat((x, spk_emb), dim=1)  # [B, C, N], where C=80+256=336
         for conv in self.convolutions:  # convolutions along time-axis
             x = conv(x)  # [B, C, N]
         x = x.transpose(1, 2)  # [B, N, C]
-
         self.lstm.flatten_parameters()
-        outputs = self.lstm(x)  # bidirectional LSTM layers
-        out_forward = outputs[:, :, :self.dim_neck]
-        out_backward = outputs[:, :, self.dim_neck:]
+        outputs, _ = self.lstm(x)  # bidirectional LSTM layers
+        out_forward = outputs[:, :, :self.dim_neck]  # [B, N, dim_neck]
+        out_backward = outputs[:, :, self.dim_neck:]  # [B, N, dim_neck]
 
         """
         As a key step of constructing the information bottleneck, 
@@ -54,13 +55,13 @@ class ContentEncoder(nn.Module):
         The down-sampling can be regarded as dimension reduction along the temporal axis, 
         which, together with the dimension reduction along the channel axis, constructs the information bottleneck.
         """
+        # down-sampling along time-axis
         codes = []
-        for i in range(0, outputs.size(1), self.freq):  # freq: downsampling factor
+        for i in range(0, outputs.size(1), self.freq):  # freq: down-sampling factor
             code_forward = out_forward[:, i + self.freq - 1, :]  # NOTE: reverse?
             code_backward = out_backward[:, i, :]
             code = torch.cat((code_forward, code_backward), dim=-1)
             codes.append(code)
-
         return codes
 
 
@@ -73,7 +74,7 @@ class SpeakerEncoder(nn.Module):
         if n_speakers < 2:
             raise ValueError('Number of speakers must > 0.')
         self.emb = nn.Embedding(n_speakers, spk_emb)
-        nn.init.normal_(self.emb.weight, mean=0.0, std=spk_emb**-0.5)
+        nn.init.normal_(self.emb.weight, mean=0.0, std=spk_emb ** -0.5)
 
     def forward(self, x):
         return self.emb(x)
@@ -113,17 +114,17 @@ class Decoder(nn.Module):
 
         self.linear_proj = LinearNorm(1024, 80)
 
-    def forward(self, x):
+    def forward(self, x):   # [B, N, C]
         x, _ = self.lstm1(x)  # NOTE: why lstm?
-        x = x.transpose(1, 2)  # [B, N, C]
-
+        x = x.transpose(1, 2)   # [B, dim_pre, N]
         for conv in self.convolutions:
             x = conv(x)
 
-        y = self.lstm2(x)
+        x = x.transpose(1, 2)   # [B, N, dim_pre]
+        y, _ = self.lstm2(x)   # [B, N, 1024]
 
-        out = self.linear_proj(y)
-
+        out = self.linear_proj(y)   # [B, N, 80]
+        print('mel: ', out.shape)
         return out
 
 
@@ -164,16 +165,17 @@ class PostNet(nn.Module):
                 ConvNorm(512, 80,
                          kernel_size=5, stride=1,
                          padding=2, dilation=1, w_gain_init='linear'),
-                nn.BatchNorm1d(512),
+                nn.BatchNorm1d(80),
                 nn.Tanh()))
 
         self.convolutions = nn.ModuleList(convolutions)
 
-    def forward(self, x):
+    def forward(self, x):   # [B, N, 80]
+        x = x.transpose(1, 2)   # [B, 80, N]
         for conv in self.convolutions:
             x = conv(x)
 
-        return x
+        return x    # [B, 80, N]
 
 
 class Generator(nn.Module):
@@ -194,29 +196,32 @@ class Generator(nn.Module):
     def forward(self, x, src, trg):
         spk_emb_src = self.speaker_encoder(src)
         codes = self.content_encoder(x, spk_emb_src)  # [B, 2*32, N/freq]
-        if trg is None: # when calculating code semantic loss, return the codes only
+        if trg is None:  # when calculating code semantic loss, return the codes only
             return torch.cat(codes, dim=-1)  # [B, 2*32, N]
 
         tmp = []
         for code in codes:  # [B, 2*32]
             # [B, 2*32] -> [B, 1, 2*32] -> [B, N/freq, 2*32]
-            tmp.append(code.unsqueeze(1).expand(-1, x.size(1) / len(codes), -1))
-        code_exp = torch.cat(tmp, dim=1)  # [B, N, 2*32]
+            tmp.append(code.unsqueeze(1).expand(-1, int(x.size(2) / len(codes)), -1))
+        code_exp = torch.cat(tmp, dim=1)  # expanded code [B, N, 2*32]
 
         # [B, 256] -> [B, 1, 256] -> [B, N, 256]
-        spk_emb_trg = spk_emb_src.unsqueeze(1).expand(-1, x.size(1), 1)
-        decoder_inputs = torch.cat((code_exp, spk_emb_src), dim=1)
+        spk_emb_trg = spk_emb_src.unsqueeze(1).expand(x.size(0), x.size(2), -1)
+        decoder_inputs = torch.cat((code_exp, spk_emb_trg), dim=-1)
 
-        mel_outputs = self.decoder(decoder_inputs)  # mel predicted by decoder
+        # mel predicted by decoder
+        mel_outputs = self.decoder(decoder_inputs)  # [B, N, 80]
 
         # residual connection
-        mel_outputs_post = self.postnet(mel_outputs.transpose(1, 2))  # [B, 80, N]
-        mel_outputs_post = mel_outputs + mel_outputs_post.transpose(1, 2)  # [B, N, 80]
+        mel_outputs_psnt = self.postnet(mel_outputs)  # [B, 80, N]
+        mel_outputs_psnt = mel_outputs + mel_outputs_psnt.transpose(1, 2)  # [B, N, 80]
 
-        mel_outputs = mel_outputs.unsqueeze(1)
-        mel_outputs_post = mel_outputs_post.unsqueeze(1)
+        mel_outputs = mel_outputs.unsqueeze(1)  # [B, 1, N, 80]
+        mel_outputs_psnt = mel_outputs_psnt.unsqueeze(1)    # [B, 1, N, 80]
 
-        return mel_outputs, mel_outputs_post, torch.cat(codes, dim=-1)
+        # mel_outputs and mel_outputs_psnt are for mel reconstruction loss
+        # codes
+        return mel_outputs, mel_outputs_psnt, torch.cat(codes, dim=-1)  # [B, 2*N]
 
 
 def build_model(config):
@@ -226,6 +231,24 @@ def build_model(config):
                           config.model.freq,
                           config.data.n_speakers)
 
-    optimizer = torch.optim.Adam(generator.parameters(), config.train.learning_rate)
+    optimizer = torch.optim.Adam(generator.parameters(),
+                                 lr=config.train.learning_rate,
+                                 betas=config.train.betas,
+                                 eps=config.train.eps)
 
     return generator, optimizer
+
+
+if __name__ == '__main__':
+    dim_neck = 32
+    dim_emb = 256
+    dim_pre = 512
+    freq = 32
+    n_speakers = 4
+
+    generator = Generator(dim_neck, dim_emb, dim_pre, freq, n_speakers)
+    x = torch.randn(2, 80, 1024)
+    sid = torch.LongTensor([1])
+
+    mel_outputs, mel_outputs_post, codes = generator(x, sid, sid)
+    print(mel_outputs.shape, mel_outputs_post.shape, codes.shape)

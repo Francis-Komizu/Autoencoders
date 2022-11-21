@@ -1,0 +1,8 @@
+data/wavs/kazuha/KA041260.wav|0
+data/wavs/kazuha/KA010035.wav|0
+data/wavs/akira/AK022178.wav|1
+data/wavs/akira/AK021428.wav|1
+data/wavs/sora/SR030281.wav|2
+data/wavs/sora/SR020021.wav|2
+data/wavs/nao/NO031213.wav|3
+data/wavs/nao/NO031522.wav|3

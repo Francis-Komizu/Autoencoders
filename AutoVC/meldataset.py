@@ -8,9 +8,10 @@ import torchaudio
 import numpy as np
 import soundfile as sf
 from torch.utils.data import DataLoader
+from utils import plot_spectrogram_to_numpy
 
-np.random.seed(1)
-random.seed(1)
+np.random.seed(1234)
+random.seed(1234)
 
 SPECT_PARAMS = {
     "n_fft": 2048,
@@ -20,9 +21,9 @@ SPECT_PARAMS = {
 
 MEL_PARAMS = {
     "n_mels": 80,
-    "n_fft": 2048,
-    "win_length": 1200,
-    "hop_length": 300
+    "n_fft": 1024,
+    "win_length": 1024,
+    "hop_length": 256
 }
 
 
@@ -31,7 +32,8 @@ class MelDataset(torch.utils.data.Dataset):
                  data_list,
                  sr=22050,
                  validation=False):
-        _data_list = [pair[:-1].split('|') for pair in data_list]  # *.wav|id
+        _data_list = [pair[:-1].split('|') for pair in data_list]  # *.wav|id # pair[:-1] -> remove \n
+
         self.data_list = [(path, int(label)) for path, label in _data_list]
         self.data_list_per_class = {
             target: [(path, label) for path, label in self.data_list if label == target] \
@@ -53,6 +55,7 @@ class MelDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         data = self.data_list[idx]
         mel_tensor, label = self._load_data(data)
+        return mel_tensor, label
 
     # 根据path加载data
     def _load_data(self, data):
@@ -98,13 +101,13 @@ class MelCollate(object):
     def __call__(self, batch):
         batch_size = len(batch)
         # TODO: 选出batch中最长的tensor作为max_length来做padding
-        n_mels = batch_size[0][0].size(0)
+        n_mels = batch[0][0].size(0)
         mels = torch.zeros(batch_size, n_mels, self.max_mel_length).float()
         labels = torch.zeros(batch_size).long()
 
         for bid, (mel, label) in enumerate(batch):
             mel_size = mel.size(1)  # 长度
-            mels[bid, :, mel_size] = mel
+            mels[bid, :, :mel_size] = mel
 
             labels[bid] = label
 
@@ -132,3 +135,18 @@ def build_dataloader(data_list,
                              pin_memory=(device != 'cpu'))
 
     return data_loader
+
+
+if __name__ == '__main__':
+    data_list = []
+    with open('data/filelist.txt') as f:
+        lines = f.readlines()
+        for line in lines:
+            line = line.replace('DUMMY', 'data')
+            data_list.append(line)
+
+    data_loader = build_dataloader(data_list, validation=True, batch_size=2, num_workers=1)
+
+    for x_real, sid in data_loader:
+        mel_gt = plot_spectrogram_to_numpy(x_real[0].squeeze(0).cpu().numpy())
+        break
