@@ -124,7 +124,7 @@ class Decoder(nn.Module):
         y, _ = self.lstm2(x)   # [B, N, 1024]
 
         out = self.linear_proj(y)   # [B, N, 80]
-        print('mel: ', out.shape)
+
         return out
 
 
@@ -221,7 +221,7 @@ class Generator(nn.Module):
 
         # mel_outputs and mel_outputs_psnt are for mel reconstruction loss
         # codes
-        return mel_outputs, mel_outputs_psnt, torch.cat(codes, dim=-1)  # [B, 2*N]
+        return mel_outputs.transpose(2, 3), mel_outputs_psnt.transpose(2, 3), torch.cat(codes, dim=-1)  # [B, 2*N]
 
 
 def build_model(config):
@@ -231,7 +231,7 @@ def build_model(config):
                           config.model.freq,
                           config.data.n_speakers)
 
-    optimizer = torch.optim.Adam(generator.parameters(),
+    optimizer = torch.optim.Adam([{'params': generator.parameters(), 'initial_lr': config.train.learning_rate}],
                                  lr=config.train.learning_rate,
                                  betas=config.train.betas,
                                  eps=config.train.eps)

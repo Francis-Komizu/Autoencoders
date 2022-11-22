@@ -12,7 +12,7 @@ import torch
 
 MATPLOTLIB_FLAG = False
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.WARNING)
 logger = logging
 
 
@@ -81,7 +81,7 @@ def get_data_list(train_path=None, val_path=None):
     if val_path is None:
         val_path = 'data/val_list.txt'
 
-    with open(train_path, 'r', encoding='uft-8') as f:
+    with open(train_path, 'r', encoding='utf-8') as f:
         train_list = f.readlines()
     with open(val_path, 'r', encoding='utf-8') as f:
         val_list = f.readlines()
