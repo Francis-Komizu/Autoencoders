@@ -63,8 +63,8 @@ def main(config_path):
 
     generator.train()
 
-    # while global_epoch < config.train.epochs:
-    while global_epoch < 5:
+    while global_epoch < config.train.epochs:
+    # while global_epoch < 5:   # debug use
         for x_real, sid in train_loader:
             # train
             x_real, sid = x_real.to(device), sid.to(device) # [B, 1, 80, N], [B]
