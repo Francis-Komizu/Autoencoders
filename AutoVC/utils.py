@@ -19,14 +19,14 @@ logger = logging
 def load_checkpoint(checkpoint_path, model, optimizer=None):
     assert os.path.isfile(checkpoint_path)
     checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
-    epoch = checkpoint_dict['epochs']
+    epoch = checkpoint_dict['epoch']
     learning_rate = checkpoint_dict['learning_rate']
     if optimizer is not None:  # resume training
         optimizer.load_state_dict(checkpoint_dict['optimizer'])
     model.load_state_dict(checkpoint_dict['model'])
     print('Loaded model and optimizer state at epoch {} from {}'.format(epoch, checkpoint_path))
 
-    return model, optimizer, epoch, learning_rate
+    return model, optimizer, learning_rate, epoch
 
 
 def save_checkpoint(checkpoint_path, model, optimizer, learning_rate, epoch):

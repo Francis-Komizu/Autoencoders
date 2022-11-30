@@ -251,4 +251,4 @@ if __name__ == '__main__':
     sid = torch.LongTensor([1])
 
     mel_outputs, mel_outputs_post, codes = generator(x, sid, sid)
-    print(mel_outputs.shape, mel_outputs_post.shape, codes.shape)
+    print(mel_outputs, mel_outputs_post, codes)

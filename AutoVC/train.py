@@ -51,8 +51,11 @@ def main(config_path):
         _, _, learning_rate, epoch = load_checkpoint(config.train.checkpoint_path,
                                                      generator, optimizer)
         global_epoch = epoch
-    except:
+        print('Train from epoch {}...'.format(epoch))
+    except Exception as e:
+        print(e)
         global_epoch = 0
+        print('Train from scratch...')
 
     global_step = global_epoch * len(train_loader)
 
@@ -171,6 +174,7 @@ def main(config_path):
                 writer_eval.add_image('mel_gt', mel_gt, global_step, dataformats='HWC')
                 writer_eval.add_image('mel_gen', mel_gen, global_step, dataformats='HWC')
                 writer_eval.add_image('mel_gen_psnt', mel_gen_psnt, global_step, dataformats='HWC')
+
 
             global_step += 1
             counter += 1
