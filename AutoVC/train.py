@@ -54,17 +54,19 @@ def main(config_path):
     except:
         global_epoch = 0
 
+    global_step = global_epoch * len(train_loader)
+
     # grad scaler
     scaler = torch.cuda.amp.GradScaler() if (('cuda' in str(device)) and config.train.fp16_run) else None
 
     # lr scheduler
 
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=config.train.lr_decay, last_epoch=global_epoch)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=config.train.lr_decay, last_epoch=global_epoch-1)
 
     generator.train()
 
     while global_epoch < config.train.epochs:
-    # while global_epoch < 5:   # debug use
+        counter = 0
         for x_real, sid in train_loader:
             # train
             x_real, sid = x_real.to(device), sid.to(device) # [B, 1, 80, N], [B]
@@ -83,7 +85,7 @@ def main(config_path):
                     loss_cd = content_loss(code_real, code_reconst)
 
                     loss_total = loss_id + loss_id_psnt + config.train.lambda_cd * loss_cd
-                scaler.scale(loss_total).backwward()
+                scaler.scale(loss_total).backward()
                 scaler.step(optimizer)
                 scaler.update()
 
@@ -104,10 +106,10 @@ def main(config_path):
 
             scheduler.step()
 
-            writer_train.add_scalar('loss_id', loss_id, global_epoch)
-            writer_train.add_scalar('loss_id_psnt', loss_id_psnt, global_epoch)
-            writer_train.add_scalar('loss_cd', loss_cd, global_epoch)
-            writer_train.add_scalar('loss_total', loss_total, global_epoch)
+            writer_train.add_scalar('loss_id', loss_id, global_step)
+            writer_train.add_scalar('loss_id_psnt', loss_id_psnt, global_step)
+            writer_train.add_scalar('loss_cd', loss_cd, global_step)
+            writer_train.add_scalar('loss_total', loss_total, global_step)
 
             # logging
             loss = {}
@@ -116,14 +118,15 @@ def main(config_path):
             loss['loss_cd'] = loss_cd.item()
             loss['loss_total'] = loss_total.item()
 
-            if global_epoch % config.train.log_interval == 0:
-                log = 'Epoch [{}/{}]'.format(global_epoch, config.train.epochs)
+            if global_step % config.train.log_interval == 0:
+                progress = counter / len(train_loader) * 100
+                log = 'Epoch [{}/{}]: {:.2f}%, step {}'.format(global_epoch, config.train.epochs, progress, global_step)
                 for key in keys:
                     log += ', {}: {:.4f}'.format(key, loss[key])
                 print(log)
 
             # evaluate and save checkpoint
-            if global_epoch % config.train.eval_interval == 0:
+            if global_step % config.train.eval_interval == 0:
                 generator.eval()
                 with torch.no_grad():
                     for x_real_val, sid_val in val_loader:
@@ -151,7 +154,7 @@ def main(config_path):
                     loss['loss_total'] = loss_total_val.item()
 
                     # logging
-                    log = 'Validation at epoch {}'.format(global_epoch)
+                    log = 'Validation at epoch {}, step {}'.format(global_epoch, global_step)
                     for key in keys:
                         log += ', {}: {:.4f}'.format(key, loss[key])
                     print(log)
@@ -165,9 +168,12 @@ def main(config_path):
                 mel_gen = plot_spectrogram_to_numpy(x_identic_val[0].squeeze(0).cpu().numpy())
                 mel_gen_psnt = plot_spectrogram_to_numpy(x_identic_psnt_val[0].squeeze(0).cpu().numpy())
 
-                writer_eval.add_image('mel_gt', mel_gt, global_epoch, dataformats='HWC')
-                writer_eval.add_image('mel_gen', mel_gen, global_epoch, dataformats='HWC')
-                writer_eval.add_image('mel_gen_psnt', mel_gen_psnt, global_epoch, dataformats='HWC')
+                writer_eval.add_image('mel_gt', mel_gt, global_step, dataformats='HWC')
+                writer_eval.add_image('mel_gen', mel_gen, global_step, dataformats='HWC')
+                writer_eval.add_image('mel_gen_psnt', mel_gen_psnt, global_step, dataformats='HWC')
+
+            global_step += 1
+            counter += 1
 
         global_epoch += 1
 

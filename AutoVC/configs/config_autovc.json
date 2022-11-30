@@ -1,22 +1,22 @@
 {
   "train": {
-    "log_interval": 100,
-    "eval_interval": 100,
+    "log_interval": 200,
+    "eval_interval": 5000,
     "seed": 1234,
     "epochs": 20000,
     "betas": [0.8, 0.99],
     "eps": 1e-9,
     "learning_rate": 1e-4,
     "lr_decay": 0.999875,
-    "batch_size": 16,
+    "batch_size": 64,
     "lambda_cd": 0.5,
     "checkpoint_path": "",
-    "save_path": "models/checkpoint.pth",
+    "save_path": "/content/drive/MyDrive/Autoencoders/checkpoint.pth",
     "fp16_run": true
   },
   "data": {
-    "training_files": "data/train_list.txt",
-    "validation_files": "data/val_list.txt",
+    "training_files": "/content/Autoencoders/AutoVC/data/Genshin/train_list.txt",
+    "validation_files": "/content/Autoencoders/AutoVC/data/Genshin/val_list.txt",
     "max_wav_value": 32768.0,
     "sampling_rate": 22050,
     "filter_length": 1024,
@@ -25,7 +25,7 @@
     "n_mels": 80,
     "mel_fmin": 0.0,
     "mel_max": null,
-    "n_speakers": 4
+    "n_speakers": 46
   },
   "model": {
     "dim_neck": 32,
